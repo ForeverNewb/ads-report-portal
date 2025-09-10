@@ -58,7 +58,7 @@ interface WebhookResponse {
 
 export function ReportBuilder() {
   const [formData, setFormData] = useState<FormData>({
-    webhookUrl: 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting',
+    webhookUrl: 'https://roger-roger.app.n8n.cloud/webhook-test/bb43757d-0f41-4c86-941c-8354d9fa07c9',
     client: '',
     channels: [],
     startDate: '',
@@ -283,7 +283,7 @@ export function ReportBuilder() {
       
       // Create abort controller for client-side timeout (slightly longer than server timeout)
       const controller = new AbortController()
-      const clientTimeoutId = setTimeout(() => controller.abort(), 320000) // 5.33 minutes
+      const clientTimeoutId = setTimeout(() => controller.abort(), 1260000) // 21 minutes
       
       try {
         const response = await fetch('/api/webhook-proxy', {
@@ -344,7 +344,7 @@ export function ReportBuilder() {
         
         // Handle client-side timeout
         if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          throw new Error('Request timed out after 5+ minutes. Your n8n workflow may still be processing in the background.')
+          throw new Error('Request timed out after 20+ minutes. Your n8n workflow may still be processing in the background.')
         }
         
         // Re-throw other fetch errors
@@ -587,8 +587,7 @@ export function ReportBuilder() {
                         <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-lime-500" />
                         <p className="text-lime-400 font-medium">Processing your report...</p>
                         <p className="text-sm mt-2 text-red-400 font-medium">⚠️ DO NOT REFRESH the page!</p>
-                        <p className="text-xs mt-2 text-gray-400">This may take up to 5 minutes with auto-retry on timeouts</p>
-                        <p className="text-xs mt-1 text-gray-500">Refreshing will cause duplicate n8n executions</p>
+                        <p className="text-xs mt-2 text-gray-400">This may take up to 20 minutes. Please wait.</p>
                       </>
                     ) : (
                       <>

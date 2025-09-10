@@ -17,16 +17,19 @@ export default function TestWebhook() {
     setReachResult('')
     
     try {
-      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting'
+      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook-test/bb43757d-0f41-4c86-941c-8354d9fa07c9'
       
+      // Use a lightweight POST request to test reachability
       const response = await fetch(webhookUrl, {
-        method: 'GET',
+        method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'User-Agent': 'Test-Bot/1.0',
         },
+        body: JSON.stringify({ test: true })
       })
       
-      if (response.ok) {
+      if (response.ok || response.status === 400) {
         setReachResult('✅ Webhook URL is reachable')
       } else {
         setReachResult(`⚠️ Webhook returned ${response.status}: ${response.statusText}`)
@@ -43,7 +46,7 @@ export default function TestWebhook() {
     setPostResult('')
     
     try {
-      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting'
+      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook-test/bb43757d-0f41-4c86-941c-8354d9fa07c9'
       
       const testPayload = {
         client: "Test Client",
