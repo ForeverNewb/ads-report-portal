@@ -17,7 +17,7 @@ export default function TestWebhook() {
     setReachResult('')
     
     try {
-      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/bb43757d-0f41-4c86-941c-8354c9fa97c9'
+      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting'
       
       const response = await fetch(webhookUrl, {
         method: 'GET',
@@ -43,7 +43,7 @@ export default function TestWebhook() {
     setPostResult('')
     
     try {
-      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/bb43757d-0f41-4c86-941c-8354c9fa97c9'
+      const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting'
       
       const testPayload = {
         client: "Test Client",
