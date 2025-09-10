@@ -22,61 +22,26 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Helper function to make webhook request with retries
-    async function makeWebhookRequest(url: string, data: any, attempt: number = 1): Promise<Response> {
-      console.log(`Making request to webhook (attempt ${attempt}):`, url)
-      console.log('Payload:', JSON.stringify(data, null, 2))
-      
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 minutes timeout
-      
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'User-Agent': 'Ads-Report-Portal/1.0',
-            'Cache-Control': 'no-cache',
-          },
-          body: JSON.stringify(data),
-          signal: controller.signal
-        })
-        
-        clearTimeout(timeoutId)
-        
-        // Handle 524 timeout specifically
-        if (response.status === 524) {
-          console.log('Received 524 timeout from Cloudflare')
-          if (attempt < 3) {
-            console.log(`Retrying in ${attempt * 10} seconds...`)
-            await new Promise(resolve => setTimeout(resolve, attempt * 10000))
-            return makeWebhookRequest(url, data, attempt + 1)
-          }
-          // If all retries failed, throw specific error
-          throw new Error('CLOUDFLARE_TIMEOUT')
-        }
-        
-        return response
-      } catch (fetchError) {
-        clearTimeout(timeoutId)
-        
-        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
-          throw new Error('REQUEST_TIMEOUT')
-        }
-        
-        // Retry on network errors (but not on 524 which is handled above)
-        if (attempt < 3 && fetchError instanceof TypeError) {
-          console.log(`Network error, retrying in ${attempt * 5} seconds...`)
-          await new Promise(resolve => setTimeout(resolve, attempt * 5000))
-          return makeWebhookRequest(url, data, attempt + 1)
-        }
-        
-        throw fetchError
-      }
-    }
+    // Make single webhook request - NO RETRIES to prevent duplicate executions
+    console.log('Making request to webhook:', webhookUrl)
+    console.log('Payload:', JSON.stringify(payload, null, 2))
+    
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 1200000) // 20 minutes timeout
     
     try {
-      const response = await makeWebhookRequest(webhookUrl, payload)
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'Ads-Report-Portal/1.0',
+          'Cache-Control': 'no-cache',
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      })
+      
+      clearTimeout(timeoutId)
       
       console.log('Webhook response status:', response.status, response.statusText)
       console.log('Webhook response headers:', Object.fromEntries(response.headers.entries()))
@@ -127,30 +92,18 @@ export async function POST(request: NextRequest) {
         { status: response.status }
       )
     } catch (fetchError) {
+      clearTimeout(timeoutId)
       
-      // Handle specific error types
-      if (fetchError instanceof Error) {
-        if (fetchError.message === 'CLOUDFLARE_TIMEOUT') {
-          return NextResponse.json(
-            { 
-              error: 'n8n Cloudflare timeout (524) after multiple retries',
-              details: 'Your n8n workflow is taking longer than Cloudflare\'s 100-second limit. Consider optimizing your workflow or using a direct n8n URL (without Cloudflare proxy).',
-              suggestion: 'Try using a direct n8n webhook URL or contact your n8n provider about timeout limits.'
-            },
-            { status: 524 }
-          )
-        }
-        
-        if (fetchError.message === 'REQUEST_TIMEOUT') {
-          return NextResponse.json(
-            { 
-              error: 'Request timed out after 5 minutes',
-              details: 'The webhook request exceeded our maximum timeout. Your n8n workflow may still be processing.',
-              suggestion: 'Check your n8n workflow logs or try again later.'
-            },
-            { status: 408 }
-          )
-        }
+      // Handle timeout error
+      if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+        return NextResponse.json(
+          { 
+            error: 'Request timed out after 20 minutes',
+            details: 'The webhook request exceeded our maximum timeout. Your n8n workflow may still be processing in the background.',
+            suggestion: 'Check your n8n workflow logs. The report may still be generated.'
+          },
+          { status: 408 }
+        )
       }
       
       // Re-throw other fetch errors to be handled by the main catch block
