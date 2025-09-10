@@ -58,7 +58,7 @@ interface WebhookResponse {
 
 export function ReportBuilder() {
   const [formData, setFormData] = useState<FormData>({
-    webhookUrl: '',
+    webhookUrl: 'https://roger-roger.app.n8n.cloud/webhook/ads-reporting',
     client: '',
     channels: [],
     startDate: '',
@@ -72,6 +72,7 @@ export function ReportBuilder() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [webhookResponse, setWebhookResponse] = useState<WebhookResponse>({ status: null, data: null })
   const [activeTab, setActiveTab] = useState('raw')
+  const [lastRequestId, setLastRequestId] = useState<string | null>(null)
 
   // Load form data from localStorage on component mount
   useEffect(() => {
@@ -108,6 +109,23 @@ export function ReportBuilder() {
       return () => clearTimeout(timeoutId)
     }
   }, [formData])
+
+  // Prevent page refresh during submission
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+        if (isSubmitting) {
+          const message = 'A report request is currently in progress. Leaving now may cause duplicate submissions.'
+          e.preventDefault()
+          e.returnValue = message
+          return message
+        }
+      }
+
+      window.addEventListener('beforeunload', handleBeforeUnload)
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload)
+    }
+  }, [isSubmitting])
 
   // Generate live payload preview
   const generatePayload = () => {
@@ -158,6 +176,27 @@ export function ReportBuilder() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Prevent duplicate submissions - generate unique request ID
+    const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+    if (isSubmitting) {
+      console.log('🚫 Request already in progress, ignoring duplicate submission')
+      return
+    }
+    
+    // Check if this is a duplicate request (within 5 seconds)
+    if (lastRequestId && Date.now() - parseInt(lastRequestId.split('-')[0]) < 5000) {
+      console.log('🚫 Duplicate request detected within 5 seconds, ignoring')
+      toast({
+        title: "Info",
+        description: "Request already submitted recently. Please wait.",
+        variant: "default",
+      })
+      return
+    }
+    
+    setLastRequestId(requestId)
+    console.log(`📤 Starting new request: ${requestId}`)
     
     // Validate required fields
     if (!formData.webhookUrl) {
@@ -282,6 +321,7 @@ export function ReportBuilder() {
         }
         
         if (response.ok) {
+          console.log(`✅ Request ${requestId} completed successfully`)
           setWebhookResponse({
             status: 'success',
             data: result.data || result,
@@ -312,6 +352,7 @@ export function ReportBuilder() {
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
+      console.log(`❌ Request ${requestId} failed:`, errorMessage)
       setWebhookResponse({
         status: 'error',
         data: null,
@@ -325,6 +366,7 @@ export function ReportBuilder() {
       })
     } finally {
       setIsSubmitting(false)
+      console.log(`🏁 Request ${requestId} finished`)
     }
   }
 
@@ -506,16 +548,20 @@ export function ReportBuilder() {
                     <Trash2 className="w-4 h-4 mr-2" />
                     Clear
                   </Button>
-                  <Button type="submit" disabled={isSubmitting} className="lime-bg text-black hover:bg-lime-400 font-medium flex-1">
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting} 
+                    className="lime-bg text-black hover:bg-lime-400 font-medium flex-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     {isSubmitting ? (
                       <>
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Processing with auto-retry...
+                        Processing (DO NOT REFRESH)...
                       </>
                     ) : (
                       <>
                         <Send className="w-4 h-4 mr-2" />
-                        Submit
+                        Submit Report
                       </>
                     )}
                   </Button>
@@ -540,8 +586,9 @@ export function ReportBuilder() {
                       <>
                         <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-lime-500" />
                         <p className="text-lime-400 font-medium">Processing your report...</p>
-                        <p className="text-sm mt-2">AI analysis in progress (may retry on timeouts)</p>
-                        <p className="text-xs mt-1 text-gray-500">This may take up to 5 minutes</p>
+                        <p className="text-sm mt-2 text-red-400 font-medium">⚠️ DO NOT REFRESH the page!</p>
+                        <p className="text-xs mt-2 text-gray-400">This may take up to 5 minutes with auto-retry on timeouts</p>
+                        <p className="text-xs mt-1 text-gray-500">Refreshing will cause duplicate n8n executions</p>
                       </>
                     ) : (
                       <>
