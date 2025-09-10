@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { LogOut, Send, Trash2, Copy, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { toast } from '@/hooks/use-toast'
+import TestWebhook from './test-webhook'
 
 const CLIENTS = [
   'GA4 - Clean Planet Services',
@@ -241,52 +242,73 @@ export function ReportBuilder() {
     try {
       const payload = generatePayload()
       
-      const response = await fetch('/api/webhook-proxy', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          webhookUrl: formData.webhookUrl,
-          payload
-        })
-      })
-
-      let result
+      // Create abort controller for client-side timeout (slightly longer than server timeout)
+      const controller = new AbortController()
+      const clientTimeoutId = setTimeout(() => controller.abort(), 320000) // 5.33 minutes
+      
       try {
-        const responseText = await response.text()
+        const response = await fetch('/api/webhook-proxy', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            webhookUrl: formData.webhookUrl,
+            payload
+          }),
+          signal: controller.signal
+        })
         
-        // Try to parse as JSON first
-        if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
-          try {
-            result = JSON.parse(responseText)
-          } catch {
-            // If JSON parsing fails, treat as text response
+        clearTimeout(clientTimeoutId)
+
+        let result
+        try {
+          const responseText = await response.text()
+          
+          // Try to parse as JSON first
+          if (responseText.trim().startsWith('{') || responseText.trim().startsWith('[')) {
+            try {
+              result = JSON.parse(responseText)
+            } catch {
+              // If JSON parsing fails, treat as text response
+              result = { data: responseText, success: response.ok }
+            }
+          } else {
+            // Not JSON, treat as text
             result = { data: responseText, success: response.ok }
           }
-        } else {
-          // Not JSON, treat as text
-          result = { data: responseText, success: response.ok }
+        } catch (parseError) {
+          throw new Error('Failed to read server response')
         }
-      } catch (parseError) {
-        throw new Error('Failed to read server response')
-      }
-      
-      if (response.ok) {
-        setWebhookResponse({
-          status: 'success',
-          data: result.data || result,
-          timestamp: new Date().toLocaleString()
-        })
-        toast({
-          title: "Success",
-          description: "Report request submitted successfully",
-        })
-      } else {
-        // Enhanced error handling with more details
-        const errorMsg = result.error || result.data || 'Failed to submit request'
-        const errorDetails = result.details ? ` Details: ${result.details}` : ''
-        throw new Error(errorMsg + errorDetails)
+        
+        if (response.ok) {
+          setWebhookResponse({
+            status: 'success',
+            data: result.data || result,
+            timestamp: new Date().toLocaleString()
+          })
+          toast({
+            title: "Success",
+            description: "Report request submitted successfully",
+          })
+        } else {
+          // Enhanced error handling with more details
+          const errorMsg = result.error || result.data || 'Failed to submit request'
+          const errorDetails = result.details ? `\n\nDetails: ${result.details}` : ''
+          const suggestion = result.suggestion ? `\n\nSuggestion: ${result.suggestion}` : ''
+          throw new Error(errorMsg + errorDetails + suggestion)
+        }
+        
+      } catch (fetchError) {
+        clearTimeout(clientTimeoutId)
+        
+        // Handle client-side timeout
+        if (fetchError instanceof Error && fetchError.name === 'AbortError') {
+          throw new Error('Request timed out after 5+ minutes. Your n8n workflow may still be processing in the background.')
+        }
+        
+        // Re-throw other fetch errors
+        throw fetchError
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred'
@@ -338,7 +360,10 @@ export function ReportBuilder() {
 
       {/* Main Content */}
       <div className="max-w-full mx-auto p-6 flex-1">
-        <div className="grid lg:grid-cols-2 gap-6" style={{ height: 'calc(100vh - 180px)' }}>
+        {/* Test Webhook Component */}
+        <TestWebhook />
+        
+        <div className="grid lg:grid-cols-2 gap-6" style={{ height: 'calc(100vh - 240px)' }}>
           {/* Left Column - Form */}
           <Card className="dark-card fade-in flex flex-col h-full">
             <CardHeader>
@@ -483,10 +508,10 @@ export function ReportBuilder() {
                   </Button>
                   <Button type="submit" disabled={isSubmitting} className="lime-bg text-black hover:bg-lime-400 font-medium flex-1">
                     {isSubmitting ? (
-  <>
-    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-    Processing (may take up to 5 minutes)...
-  </>
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Processing with auto-retry...
+                      </>
                     ) : (
                       <>
                         <Send className="w-4 h-4 mr-2" />
@@ -511,8 +536,19 @@ export function ReportBuilder() {
               {webhookResponse.status === null ? (
                 <div className="text-center flex-1 flex items-center justify-center text-gray-400">
                   <div>
-                    <Send className="w-12 h-12 mx-auto mb-4 opacity-30" />
-                    <p>Submit a request to see the response here</p>
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-lime-500" />
+                        <p className="text-lime-400 font-medium">Processing your report...</p>
+                        <p className="text-sm mt-2">AI analysis in progress (may retry on timeouts)</p>
+                        <p className="text-xs mt-1 text-gray-500">This may take up to 5 minutes</p>
+                      </>
+                    ) : (
+                      <>
+                        <Send className="w-12 h-12 mx-auto mb-4 opacity-30" />
+                        <p>Submit a request to see the response here</p>
+                      </>
+                    )}
                   </div>
                 </div>
               ) : (
