@@ -483,10 +483,10 @@ export function ReportBuilder() {
                   </Button>
                   <Button type="submit" disabled={isSubmitting} className="lime-bg text-black hover:bg-lime-400 font-medium flex-1">
                     {isSubmitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Submitting...
-                      </>
+  <>
+    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+    Processing (may take up to 5 minutes)...
+  </>
                     ) : (
                       <>
                         <Send className="w-4 h-4 mr-2" />
