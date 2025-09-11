@@ -19,20 +19,23 @@ export default function TestWebhook() {
     try {
       const webhookUrl = 'https://roger-roger.app.n8n.cloud/webhook-test/bb43757d-0f41-4c86-941c-8354d9fa07c9'
       
-      // Use a lightweight POST request to test reachability
-      const response = await fetch(webhookUrl, {
+      // Use webhook-proxy to avoid CORS issues
+      const response = await fetch('/api/webhook-proxy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Test-Bot/1.0',
         },
-        body: JSON.stringify({ test: true })
+        body: JSON.stringify({
+          webhookUrl: webhookUrl,
+          payload: { test: true }
+        })
       })
       
-      if (response.ok || response.status === 400) {
+      if (response.ok) {
         setReachResult('✅ Webhook URL is reachable')
       } else {
-        setReachResult(`⚠️ Webhook returned ${response.status}: ${response.statusText}`)
+        const error = await response.json().catch(() => ({ error: 'Unknown error' }))
+        setReachResult(`❌ Webhook test failed: ${error.error || 'Unknown error'}`)
       }
     } catch (error) {
       setReachResult(`❌ Failed to reach webhook: ${error instanceof Error ? error.message : 'Unknown error'}`)
@@ -51,35 +54,42 @@ export default function TestWebhook() {
       const testPayload = {
         client: "Test Client",
         channels: ["Test Channel"],
-        currentStartDate: "2025-01-01",
-        currentEndDate: "2025-01-31", 
+        startDate: "2025-01-01",
+        endDate: "2025-01-31", 
         previousStartDate: "2024-12-01",
         previousEndDate: "2024-12-31",
-        filename: "test-report.html"
+        fileName: "test-report.html",
+        timestamp: new Date().toISOString()
       }
       
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 30000) // 30 second test timeout
       
-      const response = await fetch(webhookUrl, {
+      // Use webhook-proxy to avoid CORS issues
+      const response = await fetch('/api/webhook-proxy', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'Test-Bot/1.0',
         },
-        body: JSON.stringify(testPayload),
+        body: JSON.stringify({
+          webhookUrl: webhookUrl,
+          payload: testPayload
+        }),
         signal: controller.signal
       })
       
       clearTimeout(timeoutId)
       
       if (response.ok) {
-        const result = await response.text()
-        setPostResult(`✅ Webhook accepted POST request: ${response.status} ${response.statusText}\n\nResponse: ${result.substring(0, 200)}...`)
-      } else if (response.status === 524) {
-        setPostResult(`⚠️ Cloudflare timeout (524) - Your n8n workflow is taking longer than 100 seconds. This is expected for AI analysis.`)
+        const result = await response.json()
+        setPostResult(`✅ Webhook accepted POST request: 200\n\nResponse: ${JSON.stringify(result.data || result, null, 2).substring(0, 200)}...`)
       } else {
-        setPostResult(`⚠️ Webhook returned ${response.status}: ${response.statusText}`)
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }))
+        if (response.status === 524) {
+          setPostResult(`⚠️ Cloudflare timeout (524) - Your n8n workflow is taking longer than expected. This is normal for AI analysis.`)
+        } else {
+          setPostResult(`⚠️ Webhook returned ${response.status}: ${errorData.error || 'Unknown error'}`)
+        }
       }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
